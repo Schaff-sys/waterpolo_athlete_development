@@ -75,13 +75,49 @@ if not numeric_cols:
     st.error("No numeric columns found for plotting.")
     st.stop()
 
-y_col = st.selectbox("Y axis", numeric_cols)
+if choice is not "Strain":
+    
 
-fig = px.line(
-    df[df["Nombre"] == athlete],
-    x="Month_Year",
-    y=y_col,
-    title=f"{athlete}: {y_col} vs Fecha"
-)
+    y_col = st.selectbox("Y axis", numeric_cols)
 
-st.plotly_chart(fig, use_container_width=True)
+    fig = px.line(
+        df[df["Nombre"] == athlete],
+        x="Month_Year",
+        y=y_col,
+        title=f"{athlete}: {y_col} vs Fecha"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+else:
+        df = df[df["Nombre"] == athlete]
+    
+        df["Week"] = df["Fecha"].dt.isocalendar().week
+
+        weekly_summary = df.groupby(["Nombre", "Week"]).agg({
+            'Training Load': ['sum','std', 'mean'],
+            'Strain': 'sum',
+            'Sleep': 'mean',
+            'Soreness': 'mean'
+        }).round(2).reset_index()
+
+        weekly_summary.columns = ['Nombre', 'Week', 'Total_Load', 'Stdev_Load', 'Avg_Load', 'Total_Strain', 'Avg_Sleep', 'Avg_Soreness']
+
+
+
+        weekly_summary['Avg_Daily_Load'] = weekly_summary['Total_Load'] / 7
+        weekly_summary["Monotony"] = weekly_summary['Avg_Daily_Load'] / weekly_summary['Stdev_Load']
+        weekly_summary['Sleep_Adjusted'] = 1 + ((weekly_summary['Avg_Sleep'] - 1/(10 - 1)) * 4)
+        weekly_summary['Weekly_Strain'] = weekly_summary['Total_Strain'] * weekly_summary['Monotony']
+        weekly_summary['Avg_Wellness'] = (weekly_summary['Sleep_Adjusted'] + (6-weekly_summary['Avg_Soreness'])) / 2
+        weekly_summary['Adjusted_Strain'] = weekly_summary['Weekly_Strain'] * ((6-weekly_summary['Avg_Wellness'])/5)
+
+        weekly_summary['Adjusted_to_Actual_Difference'] = weekly_summary['Weekly_Strain'] - weekly_summary['Adjusted_Strain']
+
+      
+
+
+
+
+
+st.dataframe(weekly_summary)
