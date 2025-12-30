@@ -1,3 +1,13 @@
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment variable files
+.env
+.env.*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
