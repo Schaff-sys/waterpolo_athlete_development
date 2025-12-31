@@ -2,122 +2,15 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(layout="wide")
-st.title("Performance Dashboard")
+st.set_page_config(page_title="Academy Dashboard", layout="wide")
+st.title("Academy Dashboard")
 
-uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
+st.sidebar.success("Select a section above ⬆️")
 
-options_list = ["Strain", "Test - General", "Test - Goalkeeper"]
-choice = st.selectbox("Select type of data", options_list)
-
-def fix_spanish_decimals(df):
-    protected_cols = ["Nombre", "Fecha"]
-    for col in df.columns:
-        if col not in protected_cols:
-            if df[col].dtype == object:
-                df[col] = df[col].str.replace(",", ".")
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-    return df
+st.markdown("""
+    ### Welcome to the Academy Dashboard 🌊  
+    Track player test results and progress over time, check player strain to ensure maximal training performance and recovery.
+    """)
 
 
 
-if not uploaded_file:
-    st.info("Please upload an Excel file to proceed.")
-    st.stop()
-
-# ---- LOAD DATA ----
-df = pd.read_excel(uploaded_file)
-
-df = fix_spanish_decimals(df)
-
-st.success("File uploaded successfully")
-
-st.dataframe(df)
-
-st.write(df.dtypes)
-
-
-# ---- HEADER BY TYPE ----
-if choice == "Strain":
-    st.header("Strain Data Analysis")
-elif choice == "Test - General":
-    st.header("General Test Data Analysis")
-elif choice == "Test - Goalkeeper":
-    st.header("Goalkeeper Test Data Analysis")
-
-# ---- SHOW RAW DATA ----
-st.subheader("Raw data")
-st.dataframe(df)
-
-# ---- CHECK ATHLETE COLUMN ----
-if "Nombre" not in df.columns:
-    st.error("Column 'Nombre' not found in Excel file.")
-    st.stop()
-
-athlete_list = (
-    df["Nombre"]
-    .dropna()
-    .astype(str)
-    .unique()
-)
-
-athlete = st.selectbox("Select Athlete", sorted(athlete_list))
-
-# ---- CHECK DATE COLUMN ----
-df["Fecha"] = pd.to_datetime(df["Fecha"], format='%d/%m/%Y', errors='coerce')
-
-df['Month_Year'] = df["Fecha"].dt.strftime('%b-%Y').str.lower()
-
-# ---- NUMERIC COLUMNS ----
-numeric_cols = df.select_dtypes(include="number").columns.tolist()
-
-if not numeric_cols:
-    st.error("No numeric columns found for plotting.")
-    st.stop()
-
-if choice is not "Strain":
-    
-
-    y_col = st.selectbox("Y axis", numeric_cols)
-
-    fig = px.line(
-        df[df["Nombre"] == athlete],
-        x="Month_Year",
-        y=y_col,
-        title=f"{athlete}: {y_col} vs Fecha"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-else:
-        df = df[df["Nombre"] == athlete]
-    
-        df["Week"] = df["Fecha"].dt.isocalendar().week
-
-        weekly_summary = df.groupby(["Nombre", "Week"]).agg({
-            'Training Load': ['sum','std', 'mean'],
-            'Strain': 'sum',
-            'Sleep': 'mean',
-            'Soreness': 'mean'
-        }).round(2).reset_index()
-
-        weekly_summary.columns = ['Nombre', 'Week', 'Total_Load', 'Stdev_Load', 'Avg_Load', 'Total_Strain', 'Avg_Sleep', 'Avg_Soreness']
-
-
-
-        weekly_summary['Avg_Daily_Load'] = weekly_summary['Total_Load'] / 7
-        weekly_summary["Monotony"] = weekly_summary['Avg_Daily_Load'] / weekly_summary['Stdev_Load']
-        weekly_summary['Sleep_Adjusted'] = 1 + ((weekly_summary['Avg_Sleep'] - 1/(10 - 1)) * 4)
-        weekly_summary['Weekly_Strain'] = weekly_summary['Total_Strain'] * weekly_summary['Monotony']
-        weekly_summary['Avg_Wellness'] = (weekly_summary['Sleep_Adjusted'] + (6-weekly_summary['Avg_Soreness'])) / 2
-        weekly_summary['Adjusted_Strain'] = weekly_summary['Weekly_Strain'] * ((6-weekly_summary['Avg_Wellness'])/5)
-
-        weekly_summary['Adjusted_to_Actual_Difference'] = weekly_summary['Weekly_Strain'] - weekly_summary['Adjusted_Strain']
-
-      
-
-
-
-
-
-st.dataframe(weekly_summary)
