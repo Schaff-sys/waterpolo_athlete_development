@@ -1,11 +1,16 @@
 import streamlit as st
 import plotly.express as px
 import pandas as pd
+import numpy as np
+
+# ---- PAGE CONFIGURATION ----
 
 st.set_page_config(layout="wide")
 st.title("Performance Dashboard")
 
 uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
+
+# ---- FIX DATA ----
 
 def fix_spanish_decimals(df):
     protected_cols = ["Nombre", "Fecha"]
@@ -21,7 +26,6 @@ if not uploaded_file:
     st.info("Please upload an Excel file to proceed.")
     st.stop()
 
-# ---- LOAD AND FIX DATA ----
 df = pd.read_excel(uploaded_file)
 
 df = fix_spanish_decimals(df)
@@ -30,9 +34,80 @@ df.columns = df.columns.str.strip()
 
 st.success("File uploaded successfully")
 
-# ---- SHOW RAW DATA ----
-st.subheader("Raw data")
+# ---- CALCULATE ACWR ----
+df.sort_values(['Nombre', 'Fecha']).fillna({'Training Load': 0}, inplace=True)
+
+df['acute'] = df.groupby('Nombre')['Training Load'].rolling(7, min_periods=1).mean().values
+df['chronic'] = df.groupby('Nombre')['Training Load'].rolling(28, min_periods=1).mean().values 
+df['ACWR'] = df['acute'] / df['chronic']
+df['Zone'] = pd.cut(df['ACWR'], bins =[0, 0.8, 1.3, 1.5, float('inf')], labels=['Low Risk - Increase Load', 'Optimal - Maintain', 'High Risk - Reduce Load', 'Very High Risk - Rest Day'])
+
+# ---- CALCULATE READINESS SCORE ----
+df['HRV_Rolling'] = df.groupby('Nombre')['HRV'].rolling(21, min_periods=4).mean().values
+df['RHR_Rolling'] = df.groupby('Nombre')['RHR'].rolling(21, min_periods=4).mean().values
+df['SORENESS_Rolling'] = df.groupby('Nombre')['Soreness'].rolling(7, min_periods=3).mean().values
+df['SLEEP_Rolling'] = df.groupby('Nombre')['Sleep'].rolling(7, min_periods=3).mean().values
+df['HRV_Delta'] = (df['HRV'] - df['HRV_Rolling'])/df['HRV_Rolling']
+df['RHR_Delta'] = (df['RHR'] - df['RHR_Rolling'])/df['RHR_Rolling']
+df['SORENESS_Delta'] = (df['Soreness'] - df['SORENESS_Rolling'])/df['SORENESS_Rolling']
+df['SLEEP_Delta'] = (df['Sleep'] - df['SLEEP_Rolling'])/df['SLEEP_Rolling']
+
+
+centre = 1.05
+k = 50
+def ACWR_Penalty(acwr):
+    if 0.8 <= acwr <= 1.3:
+        return 0
+    return k * abs(acwr - centre)
+
+df['ACWR Penalty'] = df["ACWR"].apply(ACWR_Penalty)
+df['READINESS'] = 50 + 15 * df['HRV_Delta'] - 15 * df['RHR_Delta'] + 10 * df['SLEEP_Delta'] - 10 * df['SORENESS_Delta'] - df['ACWR Penalty']
+df['Readiness Zone'] = pd.cut(df['READINESS'], bins =[0, 30, 50, 70, 90, float('inf')], labels=['Very Poor - Rest Day', 'Poor - Light Recovery', 'Fair - Technique/Skill work', 'Good - Train as normal', 'Excellent - Optional Overload'])
+st.title (" Acute Chronic Workload Ratio (ACWR) Analysis")
+
+## Athlete Selector (Large Display)
+
+selected_athlete = st.selectbox("Choose Athlete", df['Nombre'].unique(), 
+                                   format_func=lambda x: f"{x}")
+
+## Latest Scores (Big Cards)
+
+df = df[df['Nombre'] == selected_athlete]
+
 st.dataframe(df)
+latest = df[df['Nombre'] == selected_athlete].tail(1)
+
+
+if not latest.empty:
+    acwr = latest['ACWR'].iloc[0]
+    zone = latest['Zone'].iloc[0]
+
+    colA, colC = st.columns(2)
+    with colA:
+        st.metric(
+            label="Current ACWR (Predicted injury risk):", 
+            value=f"{acwr:.2f} ({zone})", 
+            delta=None
+        )
+        st.caption(f"📅 {latest['Fecha'].dt.strftime('%d/%m').iloc[0]}")
+
+    with colC:
+        Readiness_value = latest['READINESS'].iloc[0]
+        Readiness_zone = latest['Readiness Zone'].iloc[0]
+        st.metric(
+            label="Readiness Score:", 
+            value=f"{Readiness_value:.2f} ({Readiness_zone})", 
+            delta=None
+        )
+   
+## Trend Chart Below
+fig = px.line(df[df['Nombre'] == selected_athlete], 
+              x='Fecha', y='ACWR',
+              title=f"{selected_athlete} - 28 Day Trend")
+st.plotly_chart(fig, use_container_width=True)
+
+
+# ---- CALCULATE WEEKLY METRICS ----
 
 # ---- ADD ATHLETE SELECTION OPTION ----
 if "Nombre" not in df.columns:
@@ -44,22 +119,21 @@ athlete_list = (
     .dropna()
     .astype(str)
     .unique()
+    + ['All']
 )
 
 athlete = st.selectbox("Select Athlete", sorted(athlete_list))
 
-# ---- ADD WEEK SELECTION OPTION ----
-
-df = df[df["Nombre"] == athlete]
+if athlete == 'All':
+    filtered_df = df
+else:
+    filtered_df = df[df["Nombre"] == athlete]
 
 df["Week"] = df["Fecha"].dt.isocalendar().week
 
 week_num = st.selectbox("Select Week Number", sorted(df["Week"].unique()))
 
 df = df[df["Week"] == week_num]
-
-
-# ---- CALCULATE WEEKLY METRICS ----
 
 weekly_summary = df.groupby(["Nombre", "Week"]).agg({
     'Training Load': ['sum','std', 'mean'],
@@ -82,54 +156,3 @@ weekly_summary['Adjusted_to_Actual_Difference'] = weekly_summary['Weekly_Strain'
 
 st.dataframe(weekly_summary)
 
-# ---- CALCULATE ACWR ----
-df.sort_values(['Nombre', 'Fecha']).fillna({'Training Load': 0}, inplace=True)
-
-df['acute'] = df.groupby('Nombre')['Training Load'].rolling(7, min_periods=1).sum().values
-df['chronic'] = df.groupby('Nombre')['Training Load'].rolling(28, min_periods=1).mean().values 
-df['ACWR'] = df['acute'] / df['chronic']
-df['Zone'] = pd.cut(df['ACWR'], bins =[0, 0.8, 1.3, 1.5, float('inf')], labels=['Low Risk', 'Optimal', 'High Risk', 'Very High Risk'])
-
-st.title ("Acute:Chronic Workload Ratio (ACWR) Analysis")
-
-## Athlete Selector (Large Display)
-col1, col2 = st.columns([3, 1])
-with col1:
-    selected_athlete = st.selectbox("Choose Athlete", df['Nombre'].unique(), 
-                                   format_func=lambda x: f"🏅 {x}")
-with col2:
-    st.metric("Refresh", "Live", delta="↻")
-
-## Latest Scores (Big Cards)
-latest = df[df['Nombre'] == selected_athlete].tail(1)
-if not latest.empty:
-    acwr = latest['ACWR'].iloc[0]
-    zone = latest['Zone'].iloc[0]
-    
-    colA, colB, colC = st.columns(3)
-    with colA:
-        st.metric(
-            label="ACWR", 
-            value=f"{acwr:.2f}", 
-            delta=None
-        )
-        st.caption(f"📅 {latest['Fecha'].dt.strftime('%d/%m').iloc[0]}")
-
-    with colB:
-        st.markdown(f"### {zone}")
-    with colC:
-        st.metric("Training Load", latest['Training Load'].iloc[0], 
-                 delta=latest['acute'].iloc[0] - latest['chronic'].iloc[0])
-
-## Trend Chart Below
-fig = px.line(df[df['Nombre'] == selected_athlete], 
-              x='Fecha', y=['ACWR', 'Training Load'],
-              title=f"{selected_athlete} - 28 Day Trend")
-st.plotly_chart(fig, use_container_width=True)
-
-## Team Overview Table
-st.subheader("All Athletes - Latest Status")
-latest_all = df.groupby('Nombre').tail(1)[['Nombre', 'Fecha', 'ACWR', 'Zone', 'Training Load']]
-st.dataframe(latest_all.sort_values('ACWR', ascending=False), 
-             column_config={"Zone": st.column_config.ColorColumn("Risk Zone")},
-             use_container_width=True)
