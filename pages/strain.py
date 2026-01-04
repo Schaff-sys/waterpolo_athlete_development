@@ -22,13 +22,12 @@ def fix_spanish_decimals(df):
                         df[col] = df[col].str.replace(",", ".")
                         df[col] = pd.to_numeric(df[col], errors="coerce")
             return df
-def load_and_clean_data(uploaded_file):
+def load_and_clean_data(uploaded_file = None):
     try:
-        # Load file
-        uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
-        if not uploaded_file:
+        if uploaded_file is None:
             st.info("Please upload an Excel file to proceed.")
             st.stop()
+        
         df = pd.read_excel(uploaded_file)
 
         # Clean data
@@ -54,8 +53,8 @@ def load_and_clean_data(uploaded_file):
     
 # ---- SESSION STATE FOR DATAFRAME ----
 
-if 'df' not in st.session_state:
-    st.session_state.df = None
+if 'file1_df' not in st.session_state:
+    st.session_state.file1_df = None
 # ---- PAGE CONFIGURATION ----
 
 st.set_page_config(layout="wide", page_title="Athlete Strain Management Dashboard")
@@ -96,14 +95,17 @@ def calculate_acwr_and_readiness(df):
     return df
 
 with tab0:
-    st.session_state.df = load_and_clean_data(uploaded_file=None)
+    uploaded_file1 = st.file_uploader("Upload Excel file 1", type=["xlsx"])
+
+    if uploaded_file1 is not None:
+        st.session_state.file1_df = load_and_clean_data(uploaded_file1)
 
 with tab1:
-    if st.session_state.df is None:
+    if st.session_state.file1_df is None:
         st.info("Please upload data in the 'Input' tab to proceed.")
         st.stop()
-    df = calculate_acwr_and_readiness(st.session_state.df)
-    st.session_state.df = df    
+    df = calculate_acwr_and_readiness(st.session_state.file1_df)
+    st.session_state.file1_df = df    
     # ---- DASHBOARD DISPLAY ----
     st.subheader ("ACWR and Readiness Dashboard")
 
@@ -165,12 +167,11 @@ with tab1:
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
-    if st.session_state.df is None:
+    if st.session_state.file1_df is None:
         st.info("Please upload data in the 'Input' tab to proceed.")
         st.stop()
-    df = calculate_acwr_and_readiness(st.session_state.df)
-    st.session_state.df = df
-
+    df = calculate_acwr_and_readiness(st.session_state.file1_df)
+    
     st.subheader ("Summary Metrics Dashboard")
     # ---- ADD ATHLETE SELECTION OPTION ----
     if "Nombre" not in df.columns:
@@ -237,11 +238,11 @@ with tab2:
 
 
 with tab3:
-    if st.session_state.df is None:
+    if st.session_state.file1_df is None:
         st.info("Please upload data in the 'Input' tab to proceed.")
         st.stop()
-    df = calculate_acwr_and_readiness(st.session_state.df)
-    st.session_state.df = df
+    df = calculate_acwr_and_readiness(st.session_state.file1_df)
+    
     if st.button("Compute Clusters"):
 
         # Features for clustering (per athlete averages or latest rolling means)
@@ -322,11 +323,10 @@ with tab3:
             st.write(cluster_advice[cluster]['advice'])
 
 with tab4:
-    if st.session_state.df is None:
+    if st.session_state.file1_df is None:
         st.info("Please upload data in the 'Input' tab to proceed.")
         st.stop()
-    df = calculate_acwr_and_readiness(st.session_state.df)
-    st.session_state.df = df
+    df = calculate_acwr_and_readiness(st.session_state.file1_df)
 
 
     # Select only numeric columns (drops non-numeric like 'Nombre', 'Fecha')
