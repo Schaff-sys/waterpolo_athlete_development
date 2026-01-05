@@ -19,8 +19,8 @@ def fix_spanish_decimals(df):
             for col in df.columns:
                 if col not in protected_cols:
                     if df[col].dtype == object:
-                        df[col] = df[col].str.replace(",", ".")
-                        df[col] = pd.to_numeric(df[col], errors="coerce")
+                        df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce')
+
             return df
 def load_and_clean_data(uploaded_file = None):
     try:
