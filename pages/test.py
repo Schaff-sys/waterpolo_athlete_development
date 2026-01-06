@@ -70,7 +70,7 @@ if 'file2_df' not in st.session_state:
     st.session_state.file2_df = None
 
 # Your tabs code...
-tab0, tab1, tab2, tab3 = st.tabs(["Input", "Individual Metrics", "Time Progression", "Ideal Workloads and Targets"])
+tab0, tab1, tab2, tab3, tab4 = st.tabs(["Input", "Individual Metrics", "Time Progression", "Ideal Swim Workloads and Targets", "Ideal Gym Workloads"])
 
 with tab0:
     uploaded_file2 = st.file_uploader("Upload Excel", type=['xlsx'])
@@ -181,8 +181,6 @@ with tab3:
 
     latest_tests = df_swimtests.loc[df_swimtests.groupby('Nombre')['month_year'].idxmax()]
 
-    st.dataframe(latest_tests)
-
     def time_to_seconds(time_str):
         if pd.isna(time_str):
             return np.nan
@@ -192,8 +190,108 @@ with tab3:
         return mins * 60 + secs
     
     latest_tests['400m libre (seconds)'] = latest_tests['400m libre (minutes)'].apply(time_to_seconds)
-    st.dataframe(latest_tests)
+    latest_tests['CSS'] = latest_tests['400m libre (seconds)']/4
+   
 
-      
+    top_25_cutoff = latest_tests['CSS'].quantile(0.25)
+    mid_top_25_cutoff = latest_tests['CSS'].quantile(0.50)
+    mid_bottom_25_cutoff = latest_tests['CSS'].quantile(0.75)
+    bottom_25_cutoff = latest_tests['CSS'].quantile(1)
+
+    latest_tests['group'] = pd.cut(latest_tests['CSS'], 
+                                bins = [0, top_25_cutoff, mid_top_25_cutoff, 
+                                           mid_bottom_25_cutoff, bottom_25_cutoff],
+                                labels=['Top 25%', 'Mid-Top 25%', 'Mid-Bottom 25%', 'Bottom 25%'])
+
+    # Group by these quantiles and aggregate
+    summary_df = latest_tests.groupby('group').agg({
+        'CSS': 'mean',
+        '50m libre (seconds)': 'mean',
+        'Nombre': lambda x: ', '.join(x.astype(str))
+    }).reset_index()
+
+    summary_df.columns = ['Group', 'Avg_CSS', 'Avg_50m', 'Players']
+
+    summary_df['Zone_1_100_Time'] = summary_df['Avg_CSS'] * 1.15
+    summary_df['Zone_2_100_Time'] = summary_df['Avg_CSS'] * 1.05
+    summary_df['Zone_3_100_Time'] = summary_df['Avg_CSS']
+    summary_df['Zone_4_100_Time'] = summary_df['Avg_CSS'] * 0.9
+    summary_df['Zone_5_100_Time'] = summary_df['Avg_50m'] * 2
+
+    swim_distance = st.selectbox("Select swim distance", ['50m', '100m', '150m', '200m', '300m', '400m'])
+    zone_to_work = st.selectbox('Select aerobic zone', ['Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 'Zone 5'])
+   
+    swim_distance_value = int(swim_distance[:-1])/100
+
+    zone_value = int(zone_to_work[-1:])
+
+    def convert_time_secs_minutes(seconds):
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins}:{secs:02d}"
+
+    for idx, row in summary_df.iterrows():
+        col1, col2 = st.columns([2, 1])  # 2:1 width ratio
+        col1.write(row['Group'])
+        col1.write(row['Players'])
+        col2.metric("Target Time", convert_time_secs_minutes(row['Avg_CSS'] * swim_distance_value * zone_value))
+
+
+with tab4:
+    if st.session_state.file2_df is None:
+            st.info("Please upload data in the 'Input' tab to proceed.")
+            st.stop()
+
+    df = st.session_state.file2_df 
+    st.subheader("Ideal Gym Workloads")
+
+    athlete_list = df["Nombre"].dropna().astype(str).unique().tolist()
+    athlete_selected = st.selectbox("Select Athlete", athlete_list)
+    exercise_type = st.selectbox('Select type of exericse:', ["Press banca (kg)",	"Sentadillas (kg)"])
+    df_gymtests = df[['Nombre', 'month_year', exercise_type]]
+    df_gymtests = df_gymtests.dropna(subset=[exercise_type])
+    latest_tests = df_gymtests.loc[df_gymtests.groupby('Nombre')['month_year'].idxmax()]
+    df_filtered = latest_tests[latest_tests['Nombre'] == athlete_selected]
+    df_filtered = df_filtered.reset_index()
+
+    exercise_selected = st.selectbox('Select type of exericse:', ['Endurance', 'Strength', 'Hypertrophy'])
+
+    st.dataframe(df_filtered)
+    
+    one_rep_max = df_filtered.loc[0, exercise_type]
+
+
+    print(one_rep_max)
+
+    def get_exercise_weight(df, one_rep_max):
+        if exercise_selected == 'Endurance':
+            weight_range_max = 0.4 * one_rep_max
+            weight_range_min = 0.6 * one_rep_max
+            return_value = f"Exercise Weight Range: {weight_range_min}-{weight_range_max}"
+            return return_value
+         
+        elif exercise_selected == 'Strength':
+            weight_range_max = 0.3 * one_rep_max
+            weight_range_min = 0.7 * one_rep_max
+            return_value = f"Exercise Weight Range: {weight_range_min}-{weight_range_max}"
+            return return_value
+
+        elif exercise_selected == 'Hypertrophy':
+            weight_range_max = 0.7 * one_rep_max
+            weight_range_min = 0.9 * one_rep_max
+            return_value = f"Exercise Weight Range: {weight_range_min}-{weight_range_max}"
+            return return_value
+
+        return None
+
+    
+
+    get_exercise_weight(df_filtered, one_rep_max)
+
+    st.write(get_exercise_weight(df_filtered, one_rep_max))
+    
+    
+   
+
 
 
