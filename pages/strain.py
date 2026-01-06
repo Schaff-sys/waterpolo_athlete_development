@@ -119,25 +119,18 @@ with tab1:
 
     if not latest.empty:
         acwr = latest['ACWR'].iloc[0]
-        zone = latest['Zone'].iloc[0]
+        acwr_zone = latest['Zone'].iloc[0]
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric(
+
+       
+        
+        st.metric(
                 label="Current ACWR (Predicted injury risk):", 
-                value=f"{acwr:.2f} ({zone})", 
+                value=f"{acwr:.2f} ({acwr_zone})", 
                 delta=None
             )
-            st.caption(f"📅 {latest['Fecha'].dt.strftime('%d/%m').iloc[0]}")
+        st.caption(f"📅 {latest['Fecha'].dt.strftime('%d/%m').iloc[0]}")
 
-        with col2:
-            Readiness_value = latest['READINESS'].iloc[0]
-            Readiness_zone = latest['Readiness Zone'].iloc[0]
-            st.metric(
-                label="Readiness Score:", 
-                value=f"{Readiness_value:.2f} ({Readiness_zone})", 
-                delta=None
-            )
     
     ## Trend Chart Below
     fig = px.line(df_filtered, 
